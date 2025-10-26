@@ -55,10 +55,35 @@ jobs:
 
               // Verified repos with confirmed bounty programs
               const verifiedRepos = [
+                // Expensify - Official bug bounty program ($50-$10,000+)
                 'Expensify/App',
+
+                // Ethereum/Web3 with known bounty programs
                 'XDC-Community/XDPoSChain',
                 'ethereum/go-ethereum',
-                'OpenZeppelin/openzeppelin-contracts'
+                'ethereum/solidity',
+                'OpenZeppelin/openzeppelin-contracts',
+                'OpenZeppelin/openzeppelin-upgrades',
+
+                // DeFi protocols with bug bounties
+                'Uniswap/v3-core',
+                'Uniswap/v2-core',
+                'aave/aave-v3-core',
+                'compound-finance/compound-protocol',
+
+                // Other verified programs
+                'gitcoinco/web',
+                'nodejs/node',
+                'microsoft/vscode',
+                'facebook/react',
+                'vercel/next.js'
+              ];
+
+              // Bug bounty platforms (auto-verified)
+              const bountyPlatforms = [
+                'gitcoinco/',
+                'IssueHunt/',
+                'Bountysource/'
               ];
 
               for (const issue of issues.items) {
@@ -133,6 +158,43 @@ jobs:
                     continue;
                   }
 
+                  // FILTER 5: Verify repo has official bounty program
+                  const isVerifiedRepo = verifiedRepos.includes(repo);
+                  const isBountyPlatform = bountyPlatforms.some(platform => repo.startsWith(platform));
+
+                  // If NOT verified, apply strict checks
+                  if (!isVerifiedRepo && !isBountyPlatform) {
+                    // Skip security vulnerability reports (likely rejected)
+                    const securityKeywords = [
+                      'cvss',
+                      'vulnerability',
+                      'proof of concept',
+                      'security fix',
+                      'exploit',
+                      'rejected',
+                      'invalid claim',
+                      'out of scope'
+                    ];
+
+                    const isSecurityReport = securityKeywords.some(keyword => combined.includes(keyword));
+                    if (isSecurityReport) {
+                      console.log(`   ⚠️ Skipping security report in unverified repo: ${repo}`);
+                      continue;
+                    }
+
+                    // For unverified repos, require explicit bounty labels
+                    const hasBountyLabel = issue.labels.some(l =>
+                      l.name.toLowerCase().includes('bounty') ||
+                      l.name.toLowerCase().includes('gitcoin') ||
+                      l.name.toLowerCase().includes('reward')
+                    );
+
+                    if (!hasBountyLabel) {
+                      console.log(`   ⚠️ Skipping unverified repo without bounty label: ${repo}`);
+                      continue;
+                    }
+                  }
+
                   // Score the bounty
                   let score = 0;
 
@@ -142,8 +204,9 @@ jobs:
                   else if (amount >= 100) score += 2;
                   else if (amount >= 50) score += 1;
 
-                  // Verified repo bonus
-                  if (verifiedRepos.includes(repo)) score += 3;
+                  // Verified repo bonus (MAJOR BOOST)
+                  if (isVerifiedRepo) score += 5;
+                  if (isBountyPlatform) score += 4;
 
                   // Labels
                   if (issue.labels.some(l => l.name.toLowerCase().includes('good first issue'))) score += 2;
@@ -173,7 +236,9 @@ jobs:
                     assignees: 0,
                     score: score,
                     body_preview: body.substring(0, 200),
-                    verified_repo: verifiedRepos.includes(repo)
+                    verified_repo: isVerifiedRepo,
+                    bounty_platform: isBountyPlatform,
+                    trust_level: isVerifiedRepo ? 'HIGH' : (isBountyPlatform ? 'MEDIUM' : 'LOW')
                   });
                 }
               }
@@ -187,11 +252,19 @@ jobs:
 
           console.log(`\n✅ Found ${foundBounties.length} potential bounties`);
 
+          // Calculate trust statistics
+          const trustStats = {
+            high: foundBounties.filter(b => b.trust_level === 'HIGH').length,
+            medium: foundBounties.filter(b => b.trust_level === 'MEDIUM').length,
+            low: foundBounties.filter(b => b.trust_level === 'LOW').length
+          };
+
           // Save to file
           const timestamp = new Date().toISOString();
           const report = {
             generated_at: timestamp,
             total_found: foundBounties.length,
+            trust_stats: trustStats,
             bounties: foundBounties.slice(0, 50) // Top 50
           };
 
@@ -201,16 +274,22 @@ jobs:
           let summary = `## 🎯 Bounty Hunter Report\n\n`;
           summary += `**Generated:** ${timestamp}\n`;
           summary += `**Total Found:** ${foundBounties.length}\n\n`;
+          summary += `### 🔒 Trust Level Breakdown\n`;
+          summary += `- ✅ **HIGH** (Verified Repos): ${trustStats.high}\n`;
+          summary += `- ⚠️ **MEDIUM** (Bounty Platforms): ${trustStats.medium}\n`;
+          summary += `- ⚡ **LOW** (Other): ${trustStats.low}\n\n`;
           summary += `### 🏆 Top 10 Opportunities\n\n`;
 
           foundBounties.slice(0, 10).forEach((bounty, index) => {
-            summary += `**${index + 1}. ${bounty.title}**\n`;
+            const trustIcon = bounty.trust_level === 'HIGH' ? '✅' : (bounty.trust_level === 'MEDIUM' ? '⚠️' : '⚡');
+            summary += `**${index + 1}. ${bounty.title}** ${trustIcon}\n`;
             summary += `   - 💰 Amount: ${bounty.amount === 'Unknown' ? 'Not specified' : '$' + bounty.amount}\n`;
             summary += `   - 📦 Repo: ${bounty.repo}\n`;
-            summary += `   - 🏷️ Labels: ${bounty.labels.join(', ')}\n`;
+            summary += `   - 🔒 Trust: ${bounty.trust_level}${bounty.verified_repo ? ' (VERIFIED PROGRAM)' : ''}\n`;
+            summary += `   - 🏷️ Labels: ${bounty.labels.join(', ') || 'none'}\n`;
             summary += `   - 💬 Comments: ${bounty.comments}\n`;
             summary += `   - 👥 Assignees: ${bounty.assignees}\n`;
-            summary += `   - ⭐ Score: ${bounty.score}/10\n`;
+            summary += `   - ⭐ Score: ${bounty.score}/15\n`;
             summary += `   - 🔗 [View Issue](${bounty.url})\n\n`;
           });
 
