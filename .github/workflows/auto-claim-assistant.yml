@@ -1,0 +1,291 @@
+name: 🤖 Auto-Claim Assistant
+
+on:
+  workflow_dispatch:
+    inputs:
+      bounty_url:
+        description: 'Bounty Issue URL (from bounty-opportunities.json)'
+        required: true
+      auto_approve:
+        description: 'Auto-approve claim? (yes/no)'
+        required: true
+        default: 'no'
+        type: choice
+        options:
+          - 'no'
+          - 'yes'
+
+  # Can also be triggered by high-value bounty notifications
+  repository_dispatch:
+    types: [high_value_bounty_found]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  analyze-bounty:
+    name: Analyze Bounty Details
+    runs-on: ubuntu-latest
+    outputs:
+      should_claim: ${{ steps.analysis.outputs.should_claim }}
+      bounty_score: ${{ steps.analysis.outputs.score }}
+      bounty_amount: ${{ steps.analysis.outputs.amount }}
+      repo_name: ${{ steps.analysis.outputs.repo_name }}
+      issue_number: ${{ steps.analysis.outputs.issue_number }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Parse bounty URL
+      id: parse
+      run: |
+        URL="${{ github.event.inputs.bounty_url }}"
+
+        # Extract repo owner and name
+        # Example: https://github.com/facebook/react/issues/123
+        REPO_FULL=$(echo "$URL" | sed -n 's|https://github.com/\([^/]*/[^/]*\)/issues/.*|\1|p')
+        ISSUE_NUM=$(echo "$URL" | sed -n 's|.*/issues/\([0-9]*\).*|\1|p')
+
+        echo "repo_full=$REPO_FULL" >> $GITHUB_OUTPUT
+        echo "issue_number=$ISSUE_NUM" >> $GITHUB_OUTPUT
+
+        echo "📊 Repo: $REPO_FULL"
+        echo "📊 Issue: #$ISSUE_NUM"
+
+    - name: Analyze bounty
+      id: analysis
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const url = '${{ github.event.inputs.bounty_url }}';
+          const repoFull = '${{ steps.parse.outputs.repo_full }}';
+          const issueNum = parseInt('${{ steps.parse.outputs.issue_number }}');
+
+          if (!repoFull || !issueNum) {
+            core.setFailed('Invalid bounty URL format');
+            return;
+          }
+
+          const [owner, repo] = repoFull.split('/');
+
+          console.log(`🔍 Analyzing bounty: ${owner}/${repo}#${issueNum}`);
+
+          // Get issue details
+          const { data: issue } = await github.rest.issues.get({
+            owner,
+            repo,
+            issue_number: issueNum
+          });
+
+          const title = issue.title.toLowerCase();
+          const body = (issue.body || '').toLowerCase();
+          const combined = `${title} ${body}`;
+
+          // Extract amount
+          const amountMatch = combined.match(/\$(\d+)/);
+          const amount = amountMatch ? parseInt(amountMatch[1]) : 0;
+
+          // Calculate score (0-10)
+          let score = 0;
+
+          // Amount scoring
+          if (amount >= 500) score += 3;
+          else if (amount >= 200) score += 2;
+          else if (amount >= 100) score += 1;
+
+          // Tech stack matching (your preferences)
+          const preferredTech = ['javascript', 'typescript', 'react', 'node', 'web3', 'solidity', 'ethereum', 'polygon'];
+          const hasTech = preferredTech.some(tech => combined.includes(tech));
+          if (hasTech) score += 3;
+
+          // Difficulty scoring
+          if (issue.labels.some(l => l.name.toLowerCase().includes('good first issue'))) score += 2;
+          if (issue.labels.some(l => l.name.toLowerCase().includes('help wanted'))) score += 1;
+
+          // Competition check
+          if (issue.comments < 3) score += 1;
+          if (issue.assignees.length === 0) score += 1;
+          else score -= 2; // Already assigned
+
+          // Freshness
+          const createdDate = new Date(issue.created_at);
+          const daysSinceCreated = (Date.now() - createdDate) / (1000 * 60 * 60 * 24);
+          if (daysSinceCreated < 7) score += 1;
+
+          // Recommendation
+          const shouldClaim = score >= 7 && amount >= 100 && issue.assignees.length === 0;
+
+          core.setOutput('should_claim', shouldClaim);
+          core.setOutput('score', score);
+          core.setOutput('amount', amount);
+          core.setOutput('repo_name', repoFull);
+          core.setOutput('issue_number', issueNum);
+
+          // Create analysis summary
+          let summary = `## 🎯 Bounty Analysis\n\n`;
+          summary += `**Issue:** [${issue.title}](${url})\n`;
+          summary += `**Repo:** ${repoFull}\n`;
+          summary += `**Amount:** ${amount > 0 ? '$' + amount : 'Not specified'}\n`;
+          summary += `**Score:** ${score}/10\n\n`;
+          summary += `### 📊 Details:\n`;
+          summary += `- 💬 Comments: ${issue.comments}\n`;
+          summary += `- 👥 Assignees: ${issue.assignees.length}\n`;
+          summary += `- 🏷️ Labels: ${issue.labels.map(l => l.name).join(', ')}\n`;
+          summary += `- 📅 Created: ${createdDate.toLocaleDateString()}\n\n`;
+          summary += `### 🤔 Recommendation:\n`;
+
+          if (shouldClaim) {
+            summary += `✅ **RECOMMENDED TO CLAIM**\n\n`;
+            summary += `This bounty matches your criteria:\n`;
+            summary += `- Score is ${score}/10 (threshold: 7)\n`;
+            summary += `- Amount is $${amount} (threshold: $100)\n`;
+            summary += `- No assignees yet\n`;
+          } else {
+            summary += `⚠️ **NOT RECOMMENDED**\n\n`;
+            summary += `Reasons:\n`;
+            if (score < 7) summary += `- Score too low: ${score}/10\n`;
+            if (amount < 100) summary += `- Amount too low: $${amount}\n`;
+            if (issue.assignees.length > 0) summary += `- Already assigned\n`;
+          }
+
+          core.summary.addRaw(summary).write();
+
+          return { shouldClaim, score, amount };
+
+  claim-bounty:
+    name: Claim Bounty
+    needs: analyze-bounty
+    runs-on: ubuntu-latest
+    if: |
+      (needs.analyze-bounty.outputs.should_claim == 'true' && github.event.inputs.auto_approve == 'yes') ||
+      github.event.inputs.auto_approve == 'yes'
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Comment on issue to claim
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const url = '${{ github.event.inputs.bounty_url }}';
+          const repoName = '${{ needs.analyze-bounty.outputs.repo_name }}';
+          const issueNum = parseInt('${{ needs.analyze-bounty.outputs.issue_number }}');
+          const amount = '${{ needs.analyze-bounty.outputs.bounty_amount }}';
+
+          const [owner, repo] = repoName.split('/');
+
+          console.log(`💬 Claiming bounty on ${owner}/${repo}#${issueNum}`);
+
+          const claimMessage = `👋 Hi! I'd like to work on this bounty.
+
+**About me:**
+- Full-Stack Developer specializing in JavaScript/TypeScript, React, Node.js, and Web3
+- Based in Roatan, Honduras 🇭🇳
+- Active open-source contributor
+- Portfolio: https://latanda.online
+
+**My approach:**
+I'll review the requirements, set up a development environment, and provide regular updates on progress. Expected timeline: 3-7 days depending on complexity.
+
+**Questions:**
+${amount > 0 ? `- Confirmed bounty amount: $${amount}?\n` : ''}
+- Any specific coding standards or testing requirements?
+- Preferred communication channel for updates?
+
+Looking forward to contributing! 🚀`;
+
+          try {
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: issueNum,
+              body: claimMessage
+            });
+
+            console.log('✅ Claim comment posted successfully');
+
+            core.summary.addRaw(`## ✅ Bounty Claimed!\n\n**Comment posted on:** ${url}\n\nNext steps:\n1. Wait for maintainer response\n2. Run Workspace Setup Bot\n3. Start coding!\n`).write();
+          } catch (error) {
+            console.error('❌ Failed to post claim comment:', error);
+            core.setFailed(`Failed to claim bounty: ${error.message}`);
+          }
+
+    - name: Update bounty tracker
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const url = '${{ github.event.inputs.bounty_url }}';
+          const amount = parseFloat('${{ needs.analyze-bounty.outputs.bounty_amount }}');
+
+          let trackingData = { bounties: [], stats: {} };
+          if (fs.existsSync('my-bounty-tracking.json')) {
+            trackingData = JSON.parse(fs.readFileSync('my-bounty-tracking.json', 'utf8'));
+          }
+
+          // Add new bounty
+          const newBounty = {
+            url: url,
+            amount: amount,
+            status: 'claimed',
+            claimed_at: new Date().toISOString(),
+            last_updated: new Date().toISOString(),
+            history: [{
+              status: 'claimed',
+              timestamp: new Date().toISOString(),
+              note: 'Auto-claimed by Auto-Claim Assistant'
+            }]
+          };
+
+          trackingData.bounties.push(newBounty);
+
+          // Update stats
+          trackingData.stats = {
+            total_bounties: trackingData.bounties.length,
+            claimed: trackingData.bounties.filter(b => b.status === 'claimed').length,
+            in_progress: trackingData.bounties.filter(b => b.status === 'in_progress').length,
+            submitted: trackingData.bounties.filter(b => b.status === 'submitted').length,
+            completed: trackingData.bounties.filter(b => b.status === 'completed').length,
+            paid: trackingData.bounties.filter(b => b.status === 'paid').length,
+            total_earned: trackingData.bounties.filter(b => b.status === 'paid').reduce((sum, b) => sum + b.amount, 0),
+            total_pending: trackingData.bounties.filter(b => ['claimed', 'in_progress', 'submitted', 'completed'].includes(b.status)).reduce((sum, b) => sum + b.amount, 0)
+          };
+
+          trackingData.last_updated = new Date().toISOString();
+
+          fs.writeFileSync('my-bounty-tracking.json', JSON.stringify(trackingData, null, 2));
+
+          console.log('✅ Bounty tracker updated');
+
+    - name: Commit tracker update
+      run: |
+        git config user.name "Auto-Claim Bot"
+        git config user.email "bot@bounty-hunter.local"
+        git add my-bounty-tracking.json
+        git commit -m "🤖 Auto-claimed bounty: ${{ needs.analyze-bounty.outputs.bounty_amount }} - ${{ github.event.inputs.bounty_url }}" || echo "No changes"
+        git push || echo "Nothing to push"
+
+  approval-required:
+    name: Manual Approval Required
+    needs: analyze-bounty
+    runs-on: ubuntu-latest
+    if: github.event.inputs.auto_approve == 'no'
+
+    steps:
+    - name: Request approval
+      run: |
+        echo "## 🔔 Manual Approval Required" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Bounty Score:** ${{ needs.analyze-bounty.outputs.bounty_score }}/10" >> $GITHUB_STEP_SUMMARY
+        echo "**Amount:** \$${{ needs.analyze-bounty.outputs.bounty_amount }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Recommendation:** ${{ needs.analyze-bounty.outputs.should_claim == 'true' && '✅ Claim' || '⚠️ Skip' }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### To claim this bounty:" >> $GITHUB_STEP_SUMMARY
+        echo "1. Re-run this workflow" >> $GITHUB_STEP_SUMMARY
+        echo "2. Set auto_approve to: **yes**" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Bounty URL:** ${{ github.event.inputs.bounty_url }}" >> $GITHUB_STEP_SUMMARY

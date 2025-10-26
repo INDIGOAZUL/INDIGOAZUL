@@ -1,0 +1,250 @@
+name: 📊 Smart Commit Detector
+
+on:
+  schedule:
+    # Check every 12 hours for commits in bounty repos
+    - cron: '0 */12 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  detect-commits:
+    name: Detect Commits in Bounty Repos
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Load bounty tracking data
+      id: load
+      run: |
+        if [ ! -f my-bounty-tracking.json ]; then
+          echo "No tracking data found"
+          echo "has_bounties=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
+        # Count active bounties
+        ACTIVE_COUNT=$(cat my-bounty-tracking.json | jq '[.bounties[] | select(.status == "in_progress" or .status == "claimed")] | length')
+
+        echo "has_bounties=true" >> $GITHUB_OUTPUT
+        echo "active_count=$ACTIVE_COUNT" >> $GITHUB_OUTPUT
+
+        echo "📊 Active bounties: $ACTIVE_COUNT"
+
+    - name: Check commits for active bounties
+      if: steps.load.outputs.has_bounties == 'true'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+
+          if (!fs.existsSync('my-bounty-tracking.json')) {
+            console.log('No tracking file');
+            return;
+          }
+
+          const trackingData = JSON.parse(fs.readFileSync('my-bounty-tracking.json', 'utf8'));
+
+          // Filter active bounties
+          const activeBounties = trackingData.bounties.filter(b =>
+            b.status === 'in_progress' || b.status === 'claimed'
+          );
+
+          if (activeBounties.length === 0) {
+            console.log('No active bounties to check');
+            return;
+          }
+
+          console.log(`🔍 Checking ${activeBounties.length} active bounties...`);
+
+          let updates = [];
+          const myUsername = context.repo.owner; // INDIGOAZUL
+
+          for (const bounty of activeBounties) {
+            try {
+              // Parse repo from URL
+              const match = bounty.url.match(/github\.com\/([^\/]+)\/([^\/]+)\/issues\/(\d+)/);
+              if (!match) continue;
+
+              const [, owner, repo, issueNum] = match;
+
+              console.log(`\n📦 Checking ${owner}/${repo}#${issueNum}...`);
+
+              // Check for PRs from you
+              const { data: prs } = await github.rest.pulls.list({
+                owner,
+                repo,
+                state: 'all',
+                per_page: 10
+              });
+
+              const myPRs = prs.filter(pr => pr.user.login === myUsername);
+
+              // Find PR related to this issue
+              const relatedPR = myPRs.find(pr => {
+                const prBody = pr.body || '';
+                const prTitle = pr.title || '';
+                return prBody.includes(`#${issueNum}`) ||
+                       prTitle.includes(`#${issueNum}`) ||
+                       prBody.includes(bounty.url);
+              });
+
+              if (relatedPR) {
+                console.log(`✅ Found related PR: #${relatedPR.number}`);
+
+                // Determine new status
+                let newStatus = bounty.status;
+
+                if (relatedPR.merged) {
+                  newStatus = 'completed';
+                  console.log('   Status: MERGED → completed');
+                } else if (relatedPR.state === 'open') {
+                  newStatus = 'submitted';
+                  console.log('   Status: OPEN → submitted');
+                } else if (relatedPR.state === 'closed' && !relatedPR.merged) {
+                  console.log('   Status: CLOSED (not merged) - no change');
+                }
+
+                if (newStatus !== bounty.status) {
+                  updates.push({
+                    bounty,
+                    newStatus,
+                    pr: relatedPR
+                  });
+                }
+              } else {
+                // Check for commits in forks
+                try {
+                  const { data: forks } = await github.rest.repos.listForks({
+                    owner,
+                    repo,
+                    per_page: 100
+                  });
+
+                  const myFork = forks.find(f => f.owner.login === myUsername);
+
+                  if (myFork) {
+                    // Check recent commits
+                    const { data: commits } = await github.rest.repos.listCommits({
+                      owner: myUsername,
+                      repo: myFork.name,
+                      per_page: 10
+                    });
+
+                    const recentCommits = commits.filter(c => {
+                      const commitDate = new Date(c.commit.author.date);
+                      const daysSince = (Date.now() - commitDate) / (1000 * 60 * 60 * 24);
+                      return daysSince < 7; // Last 7 days
+                    });
+
+                    if (recentCommits.length > 0 && bounty.status === 'claimed') {
+                      console.log(`✅ Found ${recentCommits.length} recent commits in fork`);
+
+                      updates.push({
+                        bounty,
+                        newStatus: 'in_progress',
+                        commits: recentCommits
+                      });
+                    }
+                  }
+                } catch (error) {
+                  console.log(`   No fork found or error: ${error.message}`);
+                }
+              }
+
+            } catch (error) {
+              console.error(`Error checking bounty ${bounty.url}:`, error.message);
+            }
+          }
+
+          // Apply updates
+          if (updates.length > 0) {
+            console.log(`\n📝 Applying ${updates.length} updates...`);
+
+            for (const update of updates) {
+              const bounty = trackingData.bounties.find(b => b.url === update.bounty.url);
+
+              if (bounty) {
+                const oldStatus = bounty.status;
+                bounty.status = update.newStatus;
+                bounty.last_updated = new Date().toISOString();
+
+                bounty.history.push({
+                  status: update.newStatus,
+                  timestamp: new Date().toISOString(),
+                  note: update.pr
+                    ? `Auto-detected PR #${update.pr.number}: ${update.pr.title}`
+                    : 'Auto-detected commits in fork',
+                  auto_detected: true
+                });
+
+                console.log(`   ${bounty.url}: ${oldStatus} → ${update.newStatus}`);
+              }
+            }
+
+            // Recalculate stats
+            trackingData.stats = {
+              total_bounties: trackingData.bounties.length,
+              claimed: trackingData.bounties.filter(b => b.status === 'claimed').length,
+              in_progress: trackingData.bounties.filter(b => b.status === 'in_progress').length,
+              submitted: trackingData.bounties.filter(b => b.status === 'submitted').length,
+              completed: trackingData.bounties.filter(b => b.status === 'completed').length,
+              paid: trackingData.bounties.filter(b => b.status === 'paid').length,
+              total_earned: trackingData.bounties.filter(b => b.status === 'paid').reduce((sum, b) => sum + b.amount, 0),
+              total_pending: trackingData.bounties.filter(b => ['claimed', 'in_progress', 'submitted', 'completed'].includes(b.status)).reduce((sum, b) => sum + b.amount, 0)
+            };
+
+            trackingData.last_updated = new Date().toISOString();
+
+            fs.writeFileSync('my-bounty-tracking.json', JSON.stringify(trackingData, null, 2));
+
+            // Create summary
+            let summary = `## 📊 Commit Detection Summary\n\n`;
+            summary += `**Updates Applied:** ${updates.length}\n\n`;
+
+            for (const update of updates) {
+              summary += `### ${update.bounty.url}\n`;
+              summary += `- **Status:** ${update.bounty.status} → ${update.newStatus}\n`;
+
+              if (update.pr) {
+                summary += `- **PR:** #${update.pr.number} - ${update.pr.title}\n`;
+                summary += `- **PR State:** ${update.pr.state}${update.pr.merged ? ' (MERGED)' : ''}\n`;
+              } else if (update.commits) {
+                summary += `- **Commits:** ${update.commits.length} in last 7 days\n`;
+              }
+
+              summary += `\n`;
+            }
+
+            core.summary.addRaw(summary).write();
+
+            // Set output for commit step
+            core.exportVariable('UPDATES_COUNT', updates.length);
+
+          } else {
+            console.log('\n✅ No updates needed');
+
+            core.summary.addRaw(`## 📊 Commit Detection Summary\n\nNo updates needed. All bounty statuses are current.\n`).write();
+          }
+
+    - name: Commit updates
+      if: steps.load.outputs.has_bounties == 'true'
+      run: |
+        git config user.name "Smart Commit Detector"
+        git config user.email "bot@bounty-hunter.local"
+
+        if [ -n "$(git status --porcelain my-bounty-tracking.json)" ]; then
+          git add my-bounty-tracking.json
+          git commit -m "📊 Auto-update: Detected commits/PRs in bounty repos
+
+Updates: ${UPDATES_COUNT:-0}
+Detected by Smart Commit Detector"
+          git push
+          echo "✅ Updates committed and pushed"
+        else
+          echo "ℹ️ No changes to commit"
+        fi

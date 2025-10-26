@@ -1,0 +1,281 @@
+name: 💰 Payment Verifier
+
+on:
+  schedule:
+    # Check daily at 10 AM UTC
+    - cron: '0 10 * * *'
+  workflow_dispatch:
+    inputs:
+      bounty_url:
+        description: 'Mark bounty as paid (optional - leave empty to check all)'
+        required: false
+      confirm_payment:
+        description: 'Confirm payment received?'
+        type: choice
+        options:
+          - 'no'
+          - 'yes'
+        default: 'no'
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  verify-payments:
+    name: Verify Bounty Payments
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Check completed bounties
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+
+          if (!fs.existsSync('my-bounty-tracking.json')) {
+            console.log('No tracking data found');
+            return;
+          }
+
+          const trackingData = JSON.parse(fs.readFileSync('my-bounty-tracking.json', 'utf8'));
+
+          // Handle manual payment confirmation
+          const manualUrl = '${{ github.event.inputs.bounty_url }}';
+          const confirmPayment = '${{ github.event.inputs.confirm_payment }}' === 'yes';
+
+          if (manualUrl && confirmPayment) {
+            console.log(`💰 Manually confirming payment for: ${manualUrl}`);
+
+            const bounty = trackingData.bounties.find(b => b.url === manualUrl);
+
+            if (bounty) {
+              bounty.status = 'paid';
+              bounty.paid_at = new Date().toISOString();
+              bounty.last_updated = new Date().toISOString();
+              bounty.history.push({
+                status: 'paid',
+                timestamp: new Date().toISOString(),
+                note: 'Payment confirmed manually'
+              });
+
+              // Recalculate stats
+              trackingData.stats = {
+                total_bounties: trackingData.bounties.length,
+                claimed: trackingData.bounties.filter(b => b.status === 'claimed').length,
+                in_progress: trackingData.bounties.filter(b => b.status === 'in_progress').length,
+                submitted: trackingData.bounties.filter(b => b.status === 'submitted').length,
+                completed: trackingData.bounties.filter(b => b.status === 'completed').length,
+                paid: trackingData.bounties.filter(b => b.status === 'paid').length,
+                total_earned: trackingData.bounties.filter(b => b.status === 'paid').reduce((sum, b) => sum + b.amount, 0),
+                total_pending: trackingData.bounties.filter(b => ['claimed', 'in_progress', 'submitted', 'completed'].includes(b.status)).reduce((sum, b) => sum + b.amount, 0)
+              };
+
+              trackingData.last_updated = new Date().toISOString();
+
+              fs.writeFileSync('my-bounty-tracking.json', JSON.stringify(trackingData, null, 2));
+
+              core.summary.addRaw(`## 💰 Payment Confirmed!\n\n**Bounty:** ${manualUrl}\n**Amount:** $${bounty.amount}\n**Total Earned:** $${trackingData.stats.total_earned}\n\n🎉 Congratulations!\n`).write();
+
+              core.exportVariable('PAYMENT_CONFIRMED', 'true');
+              return;
+            } else {
+              core.setFailed('Bounty not found in tracking data');
+              return;
+            }
+          }
+
+          // Automatic check for completed bounties
+          const completedBounties = trackingData.bounties.filter(b => b.status === 'completed');
+
+          if (completedBounties.length === 0) {
+            console.log('No completed bounties awaiting payment');
+            core.summary.addRaw(`## 💰 Payment Verifier\n\nNo completed bounties awaiting payment.\n\n**Total Earned:** $${trackingData.stats.total_earned}\n`).write();
+            return;
+          }
+
+          console.log(`💰 Checking ${completedBounties.length} completed bounties...`);
+
+          const now = new Date();
+          const paymentAlerts = [];
+
+          for (const bounty of completedBounties) {
+            const completedDate = new Date(bounty.completed_at || bounty.history.find(h => h.status === 'completed')?.timestamp);
+            const daysSinceCompleted = (now - completedDate) / (1000 * 60 * 60 * 24);
+
+            // Parse repo from URL
+            const match = bounty.url.match(/github\.com\/([^\/]+)\/([^\/]+)\/issues\/(\d+)/);
+            if (!match) continue;
+
+            const [, owner, repo, issueNum] = match;
+
+            console.log(`\n📦 Checking ${owner}/${repo}#${issueNum}...`);
+            console.log(`   Days since completed: ${Math.floor(daysSinceCompleted)}`);
+
+            // Check issue comments for payment confirmation
+            try {
+              const { data: comments } = await github.rest.issues.listComments({
+                owner,
+                repo,
+                issue_number: parseInt(issueNum),
+                per_page: 100
+              });
+
+              // Look for payment-related keywords
+              const paymentKeywords = ['paid', 'payment sent', 'bounty paid', 'transferred', 'sent you'];
+              const hasPaymentComment = comments.some(c => {
+                const body = c.body.toLowerCase();
+                return paymentKeywords.some(keyword => body.includes(keyword));
+              });
+
+              if (hasPaymentComment) {
+                console.log('   💰 Payment comment detected!');
+
+                paymentAlerts.push({
+                  bounty,
+                  owner,
+                  repo,
+                  issueNum,
+                  daysSinceCompleted: Math.floor(daysSinceCompleted),
+                  action: 'payment_detected',
+                  message: 'Payment comment found in issue'
+                });
+              } else if (daysSinceCompleted > 7) {
+                console.log('   ⏰ No payment after 7+ days');
+
+                paymentAlerts.push({
+                  bounty,
+                  owner,
+                  repo,
+                  issueNum,
+                  daysSinceCompleted: Math.floor(daysSinceCompleted),
+                  action: 'reminder_needed',
+                  message: 'Completed >7 days ago, no payment yet'
+                });
+              } else {
+                console.log('   ⏳ Waiting...');
+
+                paymentAlerts.push({
+                  bounty,
+                  owner,
+                  repo,
+                  issueNum,
+                  daysSinceCompleted: Math.floor(daysSinceCompleted),
+                  action: 'waiting',
+                  message: `Waiting for payment (${Math.floor(daysSinceCompleted)} days)`
+                });
+              }
+
+            } catch (error) {
+              console.error(`   Error checking comments: ${error.message}`);
+            }
+          }
+
+          // Create summary
+          let summary = `## 💰 Payment Verification Report\n\n`;
+          summary += `**Date:** ${now.toLocaleDateString()}\n`;
+          summary += `**Completed Bounties:** ${completedBounties.length}\n\n`;
+
+          const detected = paymentAlerts.filter(a => a.action === 'payment_detected');
+          const reminders = paymentAlerts.filter(a => a.action === 'reminder_needed');
+          const waiting = paymentAlerts.filter(a => a.action === 'waiting');
+
+          if (detected.length > 0) {
+            summary += `### 🎉 Payment Detected!\n\n`;
+
+            for (const alert of detected) {
+              summary += `#### ${alert.bounty.url}\n`;
+              summary += `- **Amount:** $${alert.bounty.amount}\n`;
+              summary += `- **Completed:** ${alert.daysSinceCompleted} days ago\n`;
+              summary += `- **Status:** Payment comment found in issue!\n\n`;
+              summary += `**Action Required:**\n`;
+              summary += `1. Check your payment method (PayPal/bank/crypto wallet)\n`;
+              summary += `2. Confirm you received $${alert.bounty.amount}\n`;
+              summary += `3. Run this workflow manually with:\n`;
+              summary += `   - bounty_url: ${alert.bounty.url}\n`;
+              summary += `   - confirm_payment: yes\n\n`;
+              summary += `---\n\n`;
+            }
+          }
+
+          if (reminders.length > 0) {
+            summary += `### ⏰ Payment Reminders Needed\n\n`;
+
+            for (const alert of reminders) {
+              summary += `#### ${alert.bounty.url}\n`;
+              summary += `- **Amount:** $${alert.bounty.amount}\n`;
+              summary += `- **Completed:** ${alert.daysSinceCompleted} days ago\n`;
+              summary += `- **Issue:** No payment after 7+ days\n\n`;
+              summary += `**Suggested Actions:**\n`;
+              summary += `1. Comment on issue: "Hi! Just checking on the bounty payment status. Thanks!"\n`;
+              summary += `2. Check if maintainer mentioned payment timeline\n`;
+              summary += `3. Be patient but persistent\n`;
+              summary += `4. Politely follow up every 3-5 days if no response\n\n`;
+              summary += `**Quick link:** https://github.com/${alert.owner}/${alert.repo}/issues/${alert.issueNum}\n\n`;
+              summary += `---\n\n`;
+            }
+          }
+
+          if (waiting.length > 0) {
+            summary += `### ⏳ Waiting for Payment\n\n`;
+
+            for (const alert of waiting) {
+              summary += `- **${alert.bounty.url}** - $${alert.bounty.amount} (${alert.daysSinceCompleted}d ago)\n`;
+            }
+
+            summary += `\n*Automatic payment check will continue daily*\n\n`;
+          }
+
+          summary += `## 📊 Payment Stats\n\n`;
+          summary += `- **Total Earned:** $${trackingData.stats.total_earned}\n`;
+          summary += `- **Pending Payment:** $${completedBounties.reduce((sum, b) => sum + b.amount, 0)}\n`;
+          summary += `- **Total Pending (all):** $${trackingData.stats.total_pending}\n\n`;
+
+          core.summary.addRaw(summary).write();
+
+          // Create issue for overdue payments
+          if (reminders.length > 0) {
+            console.log('⏰ Creating payment reminder issue...');
+
+            let issueBody = `## ⏰ Payment Reminder Needed\n\n`;
+            issueBody += `You have **${reminders.length}** completed bounty(ies) awaiting payment for >7 days:\n\n`;
+
+            for (const alert of reminders) {
+              issueBody += `### ${alert.bounty.url}\n`;
+              issueBody += `- Amount: $${alert.bounty.amount}\n`;
+              issueBody += `- Completed: ${alert.daysSinceCompleted} days ago\n`;
+              issueBody += `- Action: Comment politely to ask about payment\n\n`;
+            }
+
+            issueBody += `**Total pending:** $${reminders.reduce((sum, a) => sum + a.bounty.amount, 0)}\n\n`;
+            issueBody += `*Auto-generated by Payment Verifier*`;
+
+            try {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `⏰ Payment Reminder: ${reminders.length} bounty(ies) overdue`,
+                body: issueBody,
+                labels: ['payment-reminder']
+              });
+
+              console.log('✅ Reminder issue created');
+            } catch (error) {
+              console.log('⚠️ Could not create reminder issue:', error.message);
+            }
+          }
+
+    - name: Commit tracker update
+      if: env.PAYMENT_CONFIRMED == 'true'
+      run: |
+        git config user.name "Payment Verifier"
+        git config user.email "bot@bounty-hunter.local"
+
+        git add my-bounty-tracking.json
+        git commit -m "💰 Payment confirmed: ${{ github.event.inputs.bounty_url }}" || echo "No changes"
+        git push || echo "Nothing to push"
+
+        echo "✅ Payment confirmation committed"

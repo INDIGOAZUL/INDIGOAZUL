@@ -1,0 +1,281 @@
+name: 📁 Workspace Setup Bot
+
+on:
+  workflow_dispatch:
+    inputs:
+      bounty_url:
+        description: 'Bounty Issue URL'
+        required: true
+      setup_mode:
+        description: 'Setup mode'
+        required: true
+        type: choice
+        options:
+          - 'fork_and_clone'
+          - 'clone_only'
+          - 'info_only'
+        default: 'info_only'
+
+permissions:
+  contents: write
+
+jobs:
+  generate-setup-commands:
+    name: Generate Setup Commands
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Parse bounty details
+      id: parse
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const url = '${{ github.event.inputs.bounty_url }}';
+
+          // Parse URL
+          const match = url.match(/github\.com\/([^\/]+)\/([^\/]+)\/issues\/(\d+)/);
+          if (!match) {
+            core.setFailed('Invalid GitHub issue URL');
+            return;
+          }
+
+          const [, owner, repo, issueNum] = match;
+
+          core.setOutput('owner', owner);
+          core.setOutput('repo', repo);
+          core.setOutput('issue_number', issueNum);
+          core.setOutput('repo_full', `${owner}/${repo}`);
+
+          console.log(`📦 Repo: ${owner}/${repo}`);
+          console.log(`🎯 Issue: #${issueNum}`);
+
+          // Get issue details
+          const { data: issue } = await github.rest.issues.get({
+            owner,
+            repo,
+            issue_number: parseInt(issueNum)
+          });
+
+          // Get repo details
+          const { data: repoData } = await github.rest.repos.get({
+            owner,
+            repo
+          });
+
+          return { issue, repo: repoData };
+
+    - name: Create setup script
+      run: |
+        OWNER="${{ steps.parse.outputs.outputs.owner }}"
+        REPO="${{ steps.parse.outputs.outputs.repo }}"
+        ISSUE_NUM="${{ steps.parse.outputs.outputs.issue_number }}"
+        REPO_FULL="${OWNER}/${REPO}"
+
+        cat > setup-bounty-$ISSUE_NUM.sh << 'SCRIPT_EOF'
+#!/bin/bash
+set -e
+
+echo "🎯 Setting up workspace for bounty..."
+echo "📦 Repo: $REPO_FULL"
+echo "🔢 Issue: #$ISSUE_NUM"
+echo ""
+
+# Create workspace directory
+WORKSPACE_DIR="$HOME/bounties/${REPO}-issue-${ISSUE_NUM}"
+echo "📁 Workspace: $WORKSPACE_DIR"
+
+mkdir -p "$WORKSPACE_DIR"
+cd "$WORKSPACE_DIR"
+
+# Clone or fork based on mode
+MODE="${{ github.event.inputs.setup_mode }}"
+
+if [ "$MODE" = "fork_and_clone" ]; then
+  echo "🍴 Forking repository..."
+  gh repo fork $REPO_FULL --clone --remote || echo "Fork may already exist"
+elif [ "$MODE" = "clone_only" ]; then
+  echo "📥 Cloning repository..."
+  git clone https://github.com/$REPO_FULL.git || echo "Repo may already be cloned"
+  cd $REPO
+fi
+
+# Create bounty branch
+BRANCH_NAME="bounty-issue-$ISSUE_NUM"
+echo "🌿 Creating branch: $BRANCH_NAME"
+git checkout -b "$BRANCH_NAME" || git checkout "$BRANCH_NAME"
+
+# Detect package manager and install dependencies
+echo "📦 Installing dependencies..."
+
+if [ -f "package.json" ]; then
+  if [ -f "package-lock.json" ]; then
+    echo "   Using npm..."
+    npm ci || npm install
+  elif [ -f "yarn.lock" ]; then
+    echo "   Using yarn..."
+    yarn install
+  elif [ -f "pnpm-lock.yaml" ]; then
+    echo "   Using pnpm..."
+    pnpm install
+  else
+    echo "   Using npm..."
+    npm install
+  fi
+elif [ -f "Cargo.toml" ]; then
+  echo "   Using cargo..."
+  cargo build
+elif [ -f "go.mod" ]; then
+  echo "   Using go..."
+  go mod download
+elif [ -f "requirements.txt" ]; then
+  echo "   Using pip..."
+  pip install -r requirements.txt
+elif [ -f "Gemfile" ]; then
+  echo "   Using bundle..."
+  bundle install
+else
+  echo "   ⚠️ No recognized dependency file found"
+fi
+
+# Download issue details
+echo "📋 Downloading issue details..."
+gh issue view $ISSUE_NUM --repo $REPO_FULL > BOUNTY-ISSUE.md
+
+echo ""
+echo "✅ Workspace setup complete!"
+echo ""
+echo "📍 Location: $WORKSPACE_DIR"
+echo "🌿 Branch: $BRANCH_NAME"
+echo "📋 Issue details: BOUNTY-ISSUE.md"
+echo ""
+echo "🚀 Next steps:"
+echo "   1. cd $WORKSPACE_DIR/$REPO"
+echo "   2. Read BOUNTY-ISSUE.md"
+echo "   3. Start coding!"
+echo "   4. Commit regularly"
+echo "   5. Push when ready: git push -u origin $BRANCH_NAME"
+echo ""
+SCRIPT_EOF
+
+        # Make script executable
+        chmod +x setup-bounty-$ISSUE_NUM.sh
+
+        # Save as artifact
+        echo "OWNER=${{ steps.parse.outputs.outputs.owner }}" >> setup-info.env
+        echo "REPO=${{ steps.parse.outputs.outputs.repo }}" >> setup-info.env
+        echo "ISSUE_NUM=${{ steps.parse.outputs.outputs.issue_number }}" >> setup-info.env
+        echo "REPO_FULL=${OWNER}/${REPO}" >> setup-info.env
+
+    - name: Upload setup script
+      uses: actions/upload-artifact@v4
+      with:
+        name: bounty-setup-script
+        path: |
+          setup-bounty-*.sh
+          setup-info.env
+
+    - name: Create setup instructions
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const owner = '${{ steps.parse.outputs.outputs.owner }}';
+          const repo = '${{ steps.parse.outputs.outputs.repo }}';
+          const issueNum = '${{ steps.parse.outputs.outputs.issue_number }}';
+          const mode = '${{ github.event.inputs.setup_mode }}';
+
+          let summary = `## 📁 Workspace Setup Instructions\n\n`;
+          summary += `**Bounty:** ${owner}/${repo}#${issueNum}\n`;
+          summary += `**Mode:** ${mode}\n\n`;
+
+          if (mode === 'info_only') {
+            summary += `### 📥 Download Setup Script\n\n`;
+            summary += `1. Go to the "Summary" section below\n`;
+            summary += `2. Download the artifact: \`bounty-setup-script\`\n`;
+            summary += `3. Extract and run: \`bash setup-bounty-${issueNum}.sh\`\n\n`;
+
+            summary += `### 🔧 Manual Setup (Alternative)\n\n`;
+            summary += `\`\`\`bash\n`;
+            summary += `# Fork and clone\n`;
+            summary += `gh repo fork ${owner}/${repo} --clone\n`;
+            summary += `cd ${repo}\n\n`;
+            summary += `# Create branch\n`;
+            summary += `git checkout -b bounty-issue-${issueNum}\n\n`;
+            summary += `# Install dependencies\n`;
+            summary += `npm install  # or yarn/pnpm\n\n`;
+            summary += `# Download issue details\n`;
+            summary += `gh issue view ${issueNum} --repo ${owner}/${repo} > BOUNTY-ISSUE.md\n`;
+            summary += `\`\`\`\n\n`;
+          }
+
+          summary += `### 🎯 Bounty Issue Details\n\n`;
+          summary += `**URL:** ${{ github.event.inputs.bounty_url }}\n\n`;
+
+          summary += `### 📋 Recommended Workflow\n\n`;
+          summary += `1. ✅ Read \`BOUNTY-ISSUE.md\` thoroughly\n`;
+          summary += `2. ✅ Understand requirements and acceptance criteria\n`;
+          summary += `3. ✅ Run tests to ensure baseline works\n`;
+          summary += `4. ✅ Implement solution incrementally\n`;
+          summary += `5. ✅ Commit frequently with clear messages\n`;
+          summary += `6. ✅ Push to your fork regularly\n`;
+          summary += `7. ✅ Run PR Ready Checker before submitting\n\n`;
+
+          summary += `### 🔗 Quick Commands\n\n`;
+          summary += `\`\`\`bash\n`;
+          summary += `# View issue\n`;
+          summary += `gh issue view ${issueNum} --repo ${owner}/${repo}\n\n`;
+          summary += `# Check repo details\n`;
+          summary += `gh repo view ${owner}/${repo}\n\n`;
+          summary += `# View contributing guidelines\n`;
+          summary += `gh repo view ${owner}/${repo} --web\n`;
+          summary += `\`\`\`\n`;
+
+          core.summary.addRaw(summary).write();
+
+    - name: Update bounty tracker
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const url = '${{ github.event.inputs.bounty_url }}';
+
+          if (!fs.existsSync('my-bounty-tracking.json')) {
+            console.log('⚠️ Tracker file not found, skipping update');
+            return;
+          }
+
+          const trackingData = JSON.parse(fs.readFileSync('my-bounty-tracking.json', 'utf8'));
+
+          // Find bounty
+          const bounty = trackingData.bounties.find(b => b.url === url);
+
+          if (bounty && bounty.status === 'claimed') {
+            // Update to in_progress
+            bounty.status = 'in_progress';
+            bounty.last_updated = new Date().toISOString();
+            bounty.history.push({
+              status: 'in_progress',
+              timestamp: new Date().toISOString(),
+              note: 'Workspace setup completed'
+            });
+
+            // Update stats
+            trackingData.stats.claimed = trackingData.bounties.filter(b => b.status === 'claimed').length;
+            trackingData.stats.in_progress = trackingData.bounties.filter(b => b.status === 'in_progress').length;
+
+            fs.writeFileSync('my-bounty-tracking.json', JSON.stringify(trackingData, null, 2));
+
+            console.log('✅ Tracker updated: claimed → in_progress');
+          } else {
+            console.log('ℹ️ Bounty not in tracker or already in progress');
+          }
+
+    - name: Commit tracker update
+      run: |
+        git config user.name "Workspace Setup Bot"
+        git config user.email "bot@bounty-hunter.local"
+        git add my-bounty-tracking.json
+        git commit -m "📁 Workspace setup: ${{ github.event.inputs.bounty_url }}" || echo "No changes"
+        git push || echo "Nothing to push"

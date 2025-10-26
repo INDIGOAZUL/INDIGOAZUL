@@ -10,8 +10,14 @@ This repo contains my personal Bounty Hunter system that automatically:
 
 ✅ Searches GitHub for paid bounties every 6 hours
 ✅ Alerts me when high-value opportunities ($200+) appear
-✅ Tracks my progress on claimed bounties
+✅ **AUTO-CLAIMS** bounties with my approval
+✅ **SETS UP** workspace automatically (fork, clone, deps)
+✅ **DETECTS** commits and PRs, updates tracker automatically
+✅ **MONITORS** deadlines and alerts if >7 days inactive
+✅ **VERIFIES** payments and reminds me to follow up
 ✅ Calculates my total earnings and pending payments
+
+**Automation Level:** 70% - Saves ~70 minutes per bounty!
 
 ---
 
@@ -31,43 +37,93 @@ cat bounty-opportunities.json | jq '.bounties[:10]'
 
 ## 🤖 Workflows
 
-### 1. 🎯 Bounty Hunter
-**Schedule:** Every 6 hours
-**File:** `.github/workflows/bounty-hunter.yml`
+### Core Workflows (Manual)
 
-Searches GitHub for:
-- Issues labeled `bounty`
-- Mentions of `$`, `USD`, `gitcoin`
-- Specific tech stack: JavaScript, Web3, React, Node.js, Solidity
+#### 1. 🎯 Bounty Hunter
+**Schedule:** Every 6 hours | **File:** `.github/workflows/bounty-hunter.yml`
 
-Generates: `bounty-opportunities.json` with top 50 opportunities
+Searches GitHub for paid bounties and generates `bounty-opportunities.json`
 
-### 2. 🔔 Bounty Notifications
-**Schedule:** Every 3 hours
-**File:** `.github/workflows/bounty-notifications.yml`
+#### 2. 🔔 Bounty Notifications
+**Schedule:** Every 3 hours | **File:** `.github/workflows/bounty-notifications.yml`
 
-Alerts on:
-- High-value bounties ($200+)
-- Trending Web3/blockchain repos with bounties
+Alerts on high-value bounties ($200+) and trending repos
 
-### 3. 📊 My Bounty Tracker
-**Manual trigger only**
-**File:** `.github/workflows/my-bounty-tracker.yml`
+#### 3. 📊 My Bounty Tracker
+**Manual only** | **File:** `.github/workflows/my-bounty-tracker.yml`
 
-Tracks bounty progress:
-- claimed → in_progress → submitted → completed → paid
+Tracks: claimed → in_progress → submitted → completed → paid
 
-Generates: `my-bounty-tracking.json` with full history
+---
+
+### 🚀 Automated Workflows (NEW!)
+
+#### 4. 🤖 Auto-Claim Assistant
+**Manual with approval** | **File:** `.github/workflows/auto-claim-assistant.yml`
+
+- Analyzes bounty (score 0-10)
+- Recommends claim if score ≥7, amount ≥$100
+- With your approval: Comments on issue, updates tracker
+
+#### 5. 📁 Workspace Setup Bot
+**Manual** | **File:** `.github/workflows/workspace-setup-bot.yml`
+
+- Forks repo (optional)
+- Clones locally
+- Creates branch: `bounty-issue-{num}`
+- Installs dependencies
+- Updates tracker → "in_progress"
+
+#### 6. 📊 Smart Commit Detector
+**Every 12 hours** | **File:** `.github/workflows/smart-commit-detector.yml`
+
+- Detects commits in your forks
+- Detects PRs you opened
+- Auto-updates tracker:
+  - Commits → "in_progress"
+  - PR opened → "submitted"
+  - PR merged → "completed"
+
+#### 7. ⏰ Deadline Monitor
+**Daily 9 AM UTC** | **File:** `.github/workflows/deadline-monitor.yml`
+
+- Checks active bounties
+- Alerts if >7 days without activity
+- Creates GitHub issue for overdue bounties
+- Recommends daily priority
+
+#### 8. 💰 Payment Verifier
+**Daily 10 AM UTC** | **File:** `.github/workflows/payment-verifier.yml`
+
+- Checks completed bounties for payment comments
+- Alerts if >7 days without payment
+- Creates reminder issues
+- Confirms payments with your approval
 
 ---
 
 ## 📖 Full Documentation
 
-See [BOUNTY-HUNTER-GUIDE.md](BOUNTY-HUNTER-GUIDE.md) for:
-- Complete usage instructions
-- Best practices for maximizing earnings
-- Platform recommendations
-- Daily workflow suggestions
+### 📚 Main Guides
+
+- **[BOUNTY-HUNTER-GUIDE.md](BOUNTY-HUNTER-GUIDE.md)** - Complete manual usage guide
+  - Platform recommendations
+  - Best practices for maximizing earnings
+  - Daily workflow suggestions
+  - Tips and strategies
+
+- **[AUTOMATED-WORKFLOWS-GUIDE.md](AUTOMATED-WORKFLOWS-GUIDE.md)** - Automation guide (NEW!)
+  - Complete workflow explanations
+  - How workflows collaborate
+  - Configuration and customization
+  - Troubleshooting
+
+### 🎯 Quick Links
+
+- **Bounty Search:** Check `bounty-opportunities.json`
+- **Your Stats:** Check `my-bounty-tracking.json`
+- **Actions:** https://github.com/INDIGOAZUL/INDIGOAZUL/actions
+- **Issues (Alerts):** https://github.com/INDIGOAZUL/INDIGOAZUL/issues
 
 ---
 
