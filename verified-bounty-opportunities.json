@@ -1,0 +1,22 @@
+{
+  "generated_at": "2025-10-26T06:03:04.938Z",
+  "total_found": 0,
+  "verified_only": true,
+  "repos_searched": [
+    "Expensify/App",
+    "XDC-Community/XDPoSChain",
+    "ethereum/go-ethereum",
+    "ethereum/solidity",
+    "OpenZeppelin/openzeppelin-contracts",
+    "OpenZeppelin/openzeppelin-upgrades",
+    "Uniswap/v3-core",
+    "Uniswap/v2-core",
+    "aave/aave-v3-core",
+    "compound-finance/compound-protocol",
+    "nodejs/node",
+    "microsoft/vscode",
+    "facebook/react",
+    "vercel/next.js"
+  ],
+  "bounties": []
+}
