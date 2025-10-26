@@ -53,14 +53,50 @@ jobs:
                 per_page: 20
               });
 
+              // Verified repos with confirmed bounty programs
+              const verifiedRepos = [
+                'Expensify/App',
+                'XDC-Community/XDPoSChain',
+                'ethereum/go-ethereum',
+                'OpenZeppelin/openzeppelin-contracts'
+              ];
+
               for (const issue of issues.items) {
                 // Skip if already in our list
                 if (foundBounties.find(b => b.url === issue.html_url)) continue;
+
+                // FILTER 1: Skip if already assigned
+                if (issue.assignees && issue.assignees.length > 0) {
+                  continue;
+                }
 
                 // Analyze issue body for payment indicators
                 const body = (issue.body || '').toLowerCase();
                 const title = issue.title.toLowerCase();
                 const combined = `${title} ${body}`;
+                const repo = issue.repository_url.split('/').slice(-2).join('/');
+
+                // FILTER 2: Skip false positives (budgets, documentation)
+                const falsePositiveKeywords = [
+                  'budget breakdown',
+                  'phase-by-phase budget',
+                  'total project budget',
+                  'funding structure',
+                  'development budget',
+                  'rate table',
+                  'budget summary',
+                  'cost estimate'
+                ];
+
+                const isFalsePositive = falsePositiveKeywords.some(keyword => combined.includes(keyword));
+                if (isFalsePositive) {
+                  continue;
+                }
+
+                // FILTER 3: Must be short enough to be a bounty (not documentation)
+                if (body.length > 5000) {
+                  continue;
+                }
 
                 // Look for money indicators
                 const hasMoneyIndicator =
@@ -74,22 +110,54 @@ jobs:
                   combined.includes('btc');
 
                 if (hasMoneyIndicator) {
-                  // Extract potential amount
-                  const amountMatch = combined.match(/\$(\d+)/);
-                  const amount = amountMatch ? parseInt(amountMatch[1]) : null;
+                  // Extract potential amount - improved pattern
+                  const patterns = [
+                    /\$(\d+)(?!\s*\/hr)/i,  // $250 but not $90/hr
+                    /(\d+)\s*usd/i,          // 250 USD
+                    /bounty:\s*\$(\d+)/i,    // Bounty: $250
+                    /reward:\s*\$(\d+)/i     // Reward: $250
+                  ];
+
+                  let amount = null;
+                  for (const pattern of patterns) {
+                    const match = combined.match(pattern);
+                    if (match) {
+                      amount = parseInt(match[1]);
+                      if (amount < 30) continue; // Skip hourly rates
+                      break;
+                    }
+                  }
+
+                  // FILTER 4: Must have valid bounty amount
+                  if (!amount || amount < 20) {
+                    continue;
+                  }
 
                   // Score the bounty
                   let score = 0;
-                  if (amount && amount >= 100) score += 3;
-                  else if (amount && amount >= 50) score += 2;
-                  else if (amount) score += 1;
 
+                  // Amount scoring
+                  if (amount >= 500) score += 4;
+                  else if (amount >= 200) score += 3;
+                  else if (amount >= 100) score += 2;
+                  else if (amount >= 50) score += 1;
+
+                  // Verified repo bonus
+                  if (verifiedRepos.includes(repo)) score += 3;
+
+                  // Labels
                   if (issue.labels.some(l => l.name.toLowerCase().includes('good first issue'))) score += 2;
                   if (issue.labels.some(l => l.name.toLowerCase().includes('help wanted'))) score += 1;
-                  if (issue.comments < 5) score += 1; // Less competition
-                  if (new Date(issue.created_at) > sevenDaysAgo) score += 1; // Fresh bounty
+                  if (issue.labels.some(l => l.name.toLowerCase().includes('external'))) score += 1;
 
-                  // Check tech stack (prefer JavaScript/Web3/Node.js)
+                  // Competition
+                  if (issue.comments === 0) score += 2;
+                  else if (issue.comments < 3) score += 1;
+
+                  // Freshness
+                  if (new Date(issue.created_at) > sevenDaysAgo) score += 1;
+
+                  // Tech stack
                   const preferredTech = ['javascript', 'typescript', 'react', 'node', 'web3', 'solidity', 'ethereum', 'polygon'];
                   const hasTech = preferredTech.some(tech => combined.includes(tech));
                   if (hasTech) score += 2;
@@ -97,14 +165,15 @@ jobs:
                   foundBounties.push({
                     title: issue.title,
                     url: issue.html_url,
-                    repo: issue.repository_url.split('/').slice(-2).join('/'),
-                    amount: amount || 'Unknown',
+                    repo: repo,
+                    amount: amount,
                     labels: issue.labels.map(l => l.name),
                     created: issue.created_at,
                     comments: issue.comments,
-                    assignees: issue.assignees.length,
+                    assignees: 0,
                     score: score,
-                    body_preview: body.substring(0, 200)
+                    body_preview: body.substring(0, 200),
+                    verified_repo: verifiedRepos.includes(repo)
                   });
                 }
               }
