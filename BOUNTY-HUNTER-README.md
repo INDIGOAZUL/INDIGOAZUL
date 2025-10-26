@@ -37,35 +37,50 @@ cat bounty-opportunities.json | jq '.bounties[:10]'
 
 ## 🤖 Workflows
 
-### Core Workflows (Manual)
+### Core Workflows
 
-#### 1. 🎯 Bounty Hunter
+#### 1. 🎯 Verified Repos Bounty Hunter (NEW!)
+**Schedule:** Every 3 hours | **File:** `.github/workflows/verified-repos-hunter.yml`
+
+**RECOMMENDED - Use this for best results!**
+
+Searches ONLY verified repos with official bounty programs:
+- ✅ Expensify/App ($50-$10,000+)
+- ✅ Ethereum, OpenZeppelin, Uniswap, Aave
+- ✅ Node.js, VSCode, React, Next.js
+- 🚨 Auto-creates alert issues for bounties $200+
+- 📊 Generates `verified-bounty-opportunities.json`
+
+#### 2. 🎯 Bounty Hunter (General)
 **Schedule:** Every 6 hours | **File:** `.github/workflows/bounty-hunter.yml`
 
-Searches GitHub for paid bounties and generates `bounty-opportunities.json`
+Searches ALL GitHub for paid bounties (includes unverified repos)
+- Uses trust levels: HIGH ✅, MEDIUM ⚠️, LOW ⚡
+- Filters out security reports and false positives
+- Generates `bounty-opportunities.json`
 
-#### 2. 🔔 Bounty Notifications
+#### 3. 🔔 Bounty Notifications
 **Schedule:** Every 3 hours | **File:** `.github/workflows/bounty-notifications.yml`
 
 Alerts on high-value bounties ($200+) and trending repos
 
-#### 3. 📊 My Bounty Tracker
+#### 4. 📊 My Bounty Tracker
 **Manual only** | **File:** `.github/workflows/my-bounty-tracker.yml`
 
 Tracks: claimed → in_progress → submitted → completed → paid
 
 ---
 
-### 🚀 Automated Workflows (NEW!)
+### 🚀 Automated Workflows
 
-#### 4. 🤖 Auto-Claim Assistant
+#### 5. 🤖 Auto-Claim Assistant
 **Manual with approval** | **File:** `.github/workflows/auto-claim-assistant.yml`
 
 - Analyzes bounty (score 0-10)
 - Recommends claim if score ≥7, amount ≥$100
 - With your approval: Comments on issue, updates tracker
 
-#### 5. 📁 Workspace Setup Bot
+#### 6. 📁 Workspace Setup Bot
 **Manual** | **File:** `.github/workflows/workspace-setup-bot.yml`
 
 - Forks repo (optional)
@@ -74,7 +89,7 @@ Tracks: claimed → in_progress → submitted → completed → paid
 - Installs dependencies
 - Updates tracker → "in_progress"
 
-#### 6. 📊 Smart Commit Detector
+#### 7. 📊 Smart Commit Detector
 **Every 12 hours** | **File:** `.github/workflows/smart-commit-detector.yml`
 
 - Detects commits in your forks
@@ -84,7 +99,7 @@ Tracks: claimed → in_progress → submitted → completed → paid
   - PR opened → "submitted"
   - PR merged → "completed"
 
-#### 7. ⏰ Deadline Monitor
+#### 8. ⏰ Deadline Monitor
 **Daily 9 AM UTC** | **File:** `.github/workflows/deadline-monitor.yml`
 
 - Checks active bounties
@@ -92,7 +107,7 @@ Tracks: claimed → in_progress → submitted → completed → paid
 - Creates GitHub issue for overdue bounties
 - Recommends daily priority
 
-#### 8. 💰 Payment Verifier
+#### 9. 💰 Payment Verifier
 **Daily 10 AM UTC** | **File:** `.github/workflows/payment-verifier.yml`
 
 - Checks completed bounties for payment comments
