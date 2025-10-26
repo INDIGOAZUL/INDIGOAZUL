@@ -1,0 +1,211 @@
+name: 🎯 Bounty Hunter - Find Paid Opportunities
+
+on:
+  schedule:
+    # Run every 6 hours to search for new bounties
+    - cron: '0 */6 * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  search-github-bounties:
+    name: Search GitHub for Paid Bounties
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Search for bounties across GitHub
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+
+          console.log('🔍 Searching for paid bounties across GitHub...');
+
+          // Search queries for different bounty platforms and patterns
+          const searchQueries = [
+            'label:bounty is:open is:issue',
+            'label:"💰 bounty" is:open is:issue',
+            'label:gitcoin is:open is:issue',
+            '"$" AND "bounty" is:open is:issue',
+            '"USD" AND "bounty" is:open is:issue',
+            'label:good-first-issue label:bounty is:open',
+            '"cash reward" is:open is:issue'
+          ];
+
+          const foundBounties = [];
+          const today = new Date();
+          const sevenDaysAgo = new Date(today - 7 * 24 * 60 * 60 * 1000);
+
+          for (const query of searchQueries) {
+            try {
+              console.log(`Searching: ${query}`);
+
+              const { data: issues } = await github.rest.search.issuesAndPullRequests({
+                q: query,
+                sort: 'created',
+                order: 'desc',
+                per_page: 20
+              });
+
+              for (const issue of issues.items) {
+                // Skip if already in our list
+                if (foundBounties.find(b => b.url === issue.html_url)) continue;
+
+                // Analyze issue body for payment indicators
+                const body = (issue.body || '').toLowerCase();
+                const title = issue.title.toLowerCase();
+                const combined = `${title} ${body}`;
+
+                // Look for money indicators
+                const hasMoneyIndicator =
+                  combined.includes('$') ||
+                  combined.includes('usd') ||
+                  combined.includes('paid') ||
+                  combined.includes('reward') ||
+                  combined.includes('gitcoin') ||
+                  combined.includes('bounty') ||
+                  combined.includes('eth') ||
+                  combined.includes('btc');
+
+                if (hasMoneyIndicator) {
+                  // Extract potential amount
+                  const amountMatch = combined.match(/\$(\d+)/);
+                  const amount = amountMatch ? parseInt(amountMatch[1]) : null;
+
+                  // Score the bounty
+                  let score = 0;
+                  if (amount && amount >= 100) score += 3;
+                  else if (amount && amount >= 50) score += 2;
+                  else if (amount) score += 1;
+
+                  if (issue.labels.some(l => l.name.toLowerCase().includes('good first issue'))) score += 2;
+                  if (issue.labels.some(l => l.name.toLowerCase().includes('help wanted'))) score += 1;
+                  if (issue.comments < 5) score += 1; // Less competition
+                  if (new Date(issue.created_at) > sevenDaysAgo) score += 1; // Fresh bounty
+
+                  // Check tech stack (prefer JavaScript/Web3/Node.js)
+                  const preferredTech = ['javascript', 'typescript', 'react', 'node', 'web3', 'solidity', 'ethereum', 'polygon'];
+                  const hasTech = preferredTech.some(tech => combined.includes(tech));
+                  if (hasTech) score += 2;
+
+                  foundBounties.push({
+                    title: issue.title,
+                    url: issue.html_url,
+                    repo: issue.repository_url.split('/').slice(-2).join('/'),
+                    amount: amount || 'Unknown',
+                    labels: issue.labels.map(l => l.name),
+                    created: issue.created_at,
+                    comments: issue.comments,
+                    assignees: issue.assignees.length,
+                    score: score,
+                    body_preview: body.substring(0, 200)
+                  });
+                }
+              }
+            } catch (error) {
+              console.log(`Error searching "${query}":`, error.message);
+            }
+          }
+
+          // Sort by score (best opportunities first)
+          foundBounties.sort((a, b) => b.score - a.score);
+
+          console.log(`\n✅ Found ${foundBounties.length} potential bounties`);
+
+          // Save to file
+          const timestamp = new Date().toISOString();
+          const report = {
+            generated_at: timestamp,
+            total_found: foundBounties.length,
+            bounties: foundBounties.slice(0, 50) // Top 50
+          };
+
+          fs.writeFileSync('bounty-opportunities.json', JSON.stringify(report, null, 2));
+
+          // Create summary
+          let summary = `## 🎯 Bounty Hunter Report\n\n`;
+          summary += `**Generated:** ${timestamp}\n`;
+          summary += `**Total Found:** ${foundBounties.length}\n\n`;
+          summary += `### 🏆 Top 10 Opportunities\n\n`;
+
+          foundBounties.slice(0, 10).forEach((bounty, index) => {
+            summary += `**${index + 1}. ${bounty.title}**\n`;
+            summary += `   - 💰 Amount: ${bounty.amount === 'Unknown' ? 'Not specified' : '$' + bounty.amount}\n`;
+            summary += `   - 📦 Repo: ${bounty.repo}\n`;
+            summary += `   - 🏷️ Labels: ${bounty.labels.join(', ')}\n`;
+            summary += `   - 💬 Comments: ${bounty.comments}\n`;
+            summary += `   - 👥 Assignees: ${bounty.assignees}\n`;
+            summary += `   - ⭐ Score: ${bounty.score}/10\n`;
+            summary += `   - 🔗 [View Issue](${bounty.url})\n\n`;
+          });
+
+          fs.writeFileSync('GITHUB_STEP_SUMMARY.md', summary);
+          console.log(summary);
+
+    - name: Commit bounty report
+      run: |
+        git config user.name "Bounty Hunter Bot"
+        git config user.email "bounty-hunter@latanda.online"
+
+        if [ -f bounty-opportunities.json ]; then
+          git add bounty-opportunities.json
+          git commit -m "🎯 Auto-update: Bounty opportunities $(date +%Y-%m-%d)" || echo "No changes to commit"
+          git push || echo "Nothing to push"
+        fi
+
+    - name: Create notification summary
+      run: |
+        echo "## 🎯 Bounty Hunter Scan Complete!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        if [ -f GITHUB_STEP_SUMMARY.md ]; then
+          cat GITHUB_STEP_SUMMARY.md >> $GITHUB_STEP_SUMMARY
+        fi
+
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "---" >> $GITHUB_STEP_SUMMARY
+        echo "**Next scan:** In 6 hours" >> $GITHUB_STEP_SUMMARY
+        echo "**Report saved:** \`bounty-opportunities.json\`" >> $GITHUB_STEP_SUMMARY
+
+  check-bounty-platforms:
+    name: Check External Bounty Platforms
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check popular bounty platforms
+      run: |
+        echo "🔍 Checking external bounty platforms..."
+
+        echo "## 💰 External Bounty Platforms to Check" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Visit these platforms manually for paid opportunities:" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "1. **Gitcoin** - https://gitcoin.co/explorer" >> $GITHUB_STEP_SUMMARY
+        echo "   - Web3 and blockchain bounties" >> $GITHUB_STEP_SUMMARY
+        echo "   - Typical range: \$100-\$5,000" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "2. **Bountysource** - https://www.bountysource.com/" >> $GITHUB_STEP_SUMMARY
+        echo "   - Open source bounties" >> $GITHUB_STEP_SUMMARY
+        echo "   - Typical range: \$50-\$1,000" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "3. **IssueHunt** - https://issuehunt.io/" >> $GITHUB_STEP_SUMMARY
+        echo "   - GitHub issue bounties" >> $GITHUB_STEP_SUMMARY
+        echo "   - Typical range: \$20-\$500" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "4. **HackerOne** - https://www.hackerone.com/opportunities" >> $GITHUB_STEP_SUMMARY
+        echo "   - Security bug bounties" >> $GITHUB_STEP_SUMMARY
+        echo "   - Typical range: \$100-\$10,000+" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "5. **Layer3** - https://layer3.xyz/quests" >> $GITHUB_STEP_SUMMARY
+        echo "   - Web3 bounties and quests" >> $GITHUB_STEP_SUMMARY
+        echo "   - Typical range: \$50-\$1,000" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "6. **Replit Bounties** - https://replit.com/bounties" >> $GITHUB_STEP_SUMMARY
+        echo "   - Coding challenges" >> $GITHUB_STEP_SUMMARY
+        echo "   - Typical range: \$100-\$2,000" >> $GITHUB_STEP_SUMMARY

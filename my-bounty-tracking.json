@@ -1,0 +1,15 @@
+{
+  "bounties": [],
+  "stats": {
+    "total_bounties": 0,
+    "claimed": 0,
+    "in_progress": 0,
+    "submitted": 0,
+    "completed": 0,
+    "paid": 0,
+    "total_earned": 0,
+    "total_pending": 0
+  },
+  "last_updated": "2025-10-26T00:00:00.000Z",
+  "note": "Use 'My Bounty Progress Tracker' workflow to update this file"
+}

@@ -1,0 +1,138 @@
+name: 🔔 Bounty Alert Notifications
+
+on:
+  schedule:
+    # Check for high-value bounties every 3 hours
+    - cron: '0 */3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  alert-high-value:
+    name: Alert on High-Value Bounties
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Check for high-value bounties
+      uses: actions/github-script@v7
+      with:
+        script: |
+          console.log('🔍 Checking for high-value bounties...');
+
+          // Search for bounties with specific high-value indicators
+          const queries = [
+            'label:bounty "$500" is:open is:issue',
+            'label:bounty "$1000" is:open is:issue',
+            'label:gitcoin is:open is:issue',
+            '"urgent" AND "bounty" AND "$" is:open is:issue'
+          ];
+
+          const highValueBounties = [];
+
+          for (const query of queries) {
+            try {
+              const { data: issues } = await github.rest.search.issuesAndPullRequests({
+                q: query,
+                sort: 'created',
+                order: 'desc',
+                per_page: 10
+              });
+
+              for (const issue of issues.items) {
+                const body = (issue.body || '').toLowerCase();
+                const title = issue.title.toLowerCase();
+
+                // Extract amount
+                const amountMatch = (title + ' ' + body).match(/\$(\d+)/);
+                const amount = amountMatch ? parseInt(amountMatch[1]) : 0;
+
+                // Only alert on high-value bounties (>= $200)
+                if (amount >= 200) {
+                  highValueBounties.push({
+                    title: issue.title,
+                    url: issue.html_url,
+                    amount: amount,
+                    repo: issue.repository_url.split('/').slice(-2).join('/'),
+                    created: issue.created_at
+                  });
+                }
+              }
+            } catch (error) {
+              console.log('Search error:', error.message);
+            }
+          }
+
+          if (highValueBounties.length > 0) {
+            console.log(`🚨 Found ${highValueBounties.length} high-value bounties!`);
+
+            let alert = `## 🚨 HIGH-VALUE BOUNTY ALERT!\n\n`;
+            alert += `Found ${highValueBounties.length} bounties worth $200+\n\n`;
+
+            highValueBounties.forEach((bounty, i) => {
+              alert += `### ${i + 1}. 💰 $${bounty.amount} - ${bounty.title}\n`;
+              alert += `- **Repo:** ${bounty.repo}\n`;
+              alert += `- **Created:** ${new Date(bounty.created).toLocaleDateString()}\n`;
+              alert += `- **Link:** ${bounty.url}\n\n`;
+            });
+
+            core.summary.addRaw(alert).write();
+          } else {
+            console.log('No high-value bounties found this run.');
+          }
+
+  check-trending-repos:
+    name: Check Trending Repos for Bounties
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Search trending repos
+      uses: actions/github-script@v7
+      with:
+        script: |
+          console.log('📈 Checking trending repositories...');
+
+          // Get trending JavaScript/Web3 repos
+          const topics = ['web3', 'blockchain', 'defi', 'nft', 'ethereum'];
+
+          let summary = `## 📈 Trending Repos with Potential Bounties\n\n`;
+
+          for (const topic of topics) {
+            try {
+              const { data: repos } = await github.rest.search.repos({
+                q: `topic:${topic} stars:>1000`,
+                sort: 'updated',
+                order: 'desc',
+                per_page: 5
+              });
+
+              summary += `### ${topic.toUpperCase()}\n\n`;
+
+              for (const repo of repos.items) {
+                // Check if repo has issues labeled as bounty
+                const { data: issues } = await github.rest.issues.listForRepo({
+                  owner: repo.owner.login,
+                  repo: repo.name,
+                  labels: 'bounty',
+                  state: 'open',
+                  per_page: 3
+                });
+
+                if (issues.length > 0) {
+                  summary += `**${repo.full_name}** - ${issues.length} bounties open\n`;
+                  issues.forEach(issue => {
+                    summary += `  - [${issue.title}](${issue.html_url})\n`;
+                  });
+                  summary += `\n`;
+                }
+              }
+            } catch (error) {
+              console.log(`Error checking ${topic}:`, error.message);
+            }
+          }
+
+          core.summary.addRaw(summary).write();

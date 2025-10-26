@@ -1,0 +1,166 @@
+name: 📊 My Bounty Progress Tracker
+
+on:
+  workflow_dispatch:
+    inputs:
+      bounty_url:
+        description: 'GitHub Issue URL of the bounty'
+        required: true
+      amount:
+        description: 'Bounty amount (e.g., 100 for $100)'
+        required: true
+      status:
+        description: 'Status'
+        required: true
+        type: choice
+        options:
+          - claimed
+          - in_progress
+          - submitted
+          - completed
+          - paid
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  track-bounty:
+    name: Track Personal Bounty
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Update bounty tracking
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+
+          const bountyUrl = '${{ github.event.inputs.bounty_url }}';
+          const amount = '${{ github.event.inputs.amount }}';
+          const status = '${{ github.event.inputs.status }}';
+          const timestamp = new Date().toISOString();
+
+          console.log('📊 Updating bounty tracking...');
+          console.log(`URL: ${bountyUrl}`);
+          console.log(`Amount: $${amount}`);
+          console.log(`Status: ${status}`);
+
+          // Load existing tracking data
+          let trackingData = { bounties: [], stats: {} };
+          if (fs.existsSync('my-bounty-tracking.json')) {
+            trackingData = JSON.parse(fs.readFileSync('my-bounty-tracking.json', 'utf8'));
+          }
+
+          // Find or create bounty entry
+          let bounty = trackingData.bounties.find(b => b.url === bountyUrl);
+
+          if (!bounty) {
+            // New bounty
+            bounty = {
+              url: bountyUrl,
+              amount: parseFloat(amount),
+              claimed_at: timestamp,
+              history: []
+            };
+            trackingData.bounties.push(bounty);
+          }
+
+          // Update status
+          bounty.status = status;
+          bounty.last_updated = timestamp;
+
+          // Add to history
+          bounty.history.push({
+            status: status,
+            timestamp: timestamp
+          });
+
+          // Set specific timestamps
+          if (status === 'claimed' && !bounty.claimed_at) {
+            bounty.claimed_at = timestamp;
+          } else if (status === 'submitted' && !bounty.submitted_at) {
+            bounty.submitted_at = timestamp;
+          } else if (status === 'completed' && !bounty.completed_at) {
+            bounty.completed_at = timestamp;
+          } else if (status === 'paid' && !bounty.paid_at) {
+            bounty.paid_at = timestamp;
+          }
+
+          // Calculate stats
+          const stats = {
+            total_bounties: trackingData.bounties.length,
+            claimed: trackingData.bounties.filter(b => b.status === 'claimed').length,
+            in_progress: trackingData.bounties.filter(b => b.status === 'in_progress').length,
+            submitted: trackingData.bounties.filter(b => b.status === 'submitted').length,
+            completed: trackingData.bounties.filter(b => b.status === 'completed').length,
+            paid: trackingData.bounties.filter(b => b.status === 'paid').length,
+            total_earned: trackingData.bounties
+              .filter(b => b.status === 'paid')
+              .reduce((sum, b) => sum + b.amount, 0),
+            total_pending: trackingData.bounties
+              .filter(b => ['claimed', 'in_progress', 'submitted', 'completed'].includes(b.status))
+              .reduce((sum, b) => sum + b.amount, 0)
+          };
+
+          trackingData.stats = stats;
+          trackingData.last_updated = timestamp;
+
+          // Save updated data
+          fs.writeFileSync('my-bounty-tracking.json', JSON.stringify(trackingData, null, 2));
+
+          // Create summary
+          let summary = `## 📊 Bounty Tracking Updated\n\n`;
+          summary += `**Bounty:** ${bountyUrl}\n`;
+          summary += `**Amount:** $${amount}\n`;
+          summary += `**New Status:** ${status}\n`;
+          summary += `**Updated:** ${timestamp}\n\n`;
+
+          summary += `### 💰 Your Stats\n\n`;
+          summary += `- **Total Bounties:** ${stats.total_bounties}\n`;
+          summary += `- **Claimed:** ${stats.claimed}\n`;
+          summary += `- **In Progress:** ${stats.in_progress}\n`;
+          summary += `- **Submitted:** ${stats.submitted}\n`;
+          summary += `- **Completed:** ${stats.completed}\n`;
+          summary += `- **Paid:** ${stats.paid}\n\n`;
+          summary += `- **💵 Total Earned:** $${stats.total_earned}\n`;
+          summary += `- **⏳ Pending Payment:** $${stats.total_pending}\n`;
+
+          console.log(summary);
+          core.summary.addRaw(summary).write();
+
+    - name: Commit tracking data
+      run: |
+        git config user.name "Bounty Tracker"
+        git config user.email "tracker@latanda.online"
+
+        git add my-bounty-tracking.json
+        git commit -m "📊 Update bounty tracking: ${{ github.event.inputs.status }}" || echo "No changes"
+        git push || echo "Nothing to push"
+
+    - name: Send status notification
+      run: |
+        STATUS="${{ github.event.inputs.status }}"
+        AMOUNT="${{ github.event.inputs.amount }}"
+        URL="${{ github.event.inputs.bounty_url }}"
+
+        case "$STATUS" in
+          claimed)
+            echo "🎯 You claimed a bounty worth \$$AMOUNT!"
+            ;;
+          in_progress)
+            echo "⚙️ Bounty in progress - keep going!"
+            ;;
+          submitted)
+            echo "✅ PR submitted! Waiting for review..."
+            ;;
+          completed)
+            echo "🎉 Bounty completed! Waiting for payment..."
+            ;;
+          paid)
+            echo "💰 PAID! You earned \$$AMOUNT!"
+            ;;
+        esac
