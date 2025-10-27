@@ -1,5 +1,11 @@
 name: 🎯 Verified Repos Bounty Hunter
 
+# FILTERS ACTIVE (as of 2025-10-27):
+# ✅ Age Filter: Only bounties created after Jan 2023 (no 2+ year old issues)
+# ✅ Activity Filter: Only bounties updated in last 6 months
+# ✅ Payment Detection: Skips paid Gitcoin bounties (checks body + comments)
+# ✅ Assignment Check: Skips already assigned bounties
+
 on:
   schedule:
     # Run every 3 hours (more frequent for high-value repos)
@@ -72,6 +78,8 @@ jobs:
           const foundBounties = [];
           const today = new Date();
           const thirtyDaysAgo = new Date(today - 30 * 24 * 60 * 60 * 1000);
+          const twoYearsAgo = new Date(today - 730 * 24 * 60 * 60 * 1000); // Jan 2023 cutoff
+          const sixMonthsAgo = new Date(today - 180 * 24 * 60 * 60 * 1000);
 
           for (const { repo, priority } of verifiedRepos) {
             const [owner, repoName] = repo.split('/');
@@ -86,7 +94,7 @@ jobs:
                 state: 'open',
                 labels: 'bounty',
                 per_page: 100,
-                sort: 'created',
+                sort: 'updated',  // Changed from 'created' to 'updated'
                 direction: 'desc'
               });
 
@@ -102,9 +110,70 @@ jobs:
                   continue;
                 }
 
+                // FILTER 1: Skip bounties older than 2 years (created before 2023)
+                const createdDate = new Date(issue.created_at);
+                if (createdDate < twoYearsAgo) {
+                  console.log(`   ⏭️ Skipping #${issue.number} - too old (created ${createdDate.getFullYear()})`);
+                  continue;
+                }
+
+                // FILTER 2: Skip bounties with no recent activity (6 months)
+                const updatedDate = new Date(issue.updated_at);
+                if (updatedDate < sixMonthsAgo) {
+                  console.log(`   ⏭️ Skipping #${issue.number} - no activity in 6+ months (last update ${updatedDate.toLocaleDateString()})`);
+                  continue;
+                }
+
                 const body = (issue.body || '').toLowerCase();
                 const title = issue.title.toLowerCase();
                 const combined = `${title} ${body}`;
+
+                // FILTER 3: Check for Gitcoin payment confirmation indicators
+                const paymentIndicators = [
+                  'has been approved & issued',
+                  'funding has been approved',
+                  'bounty has been paid',
+                  'gitcoinbot',
+                  'issue status: 1. open 2. started 3. submitted 4. done',
+                  'the funding of',
+                  'has been issued to'
+                ];
+
+                const hasPaymentIndicator = paymentIndicators.some(indicator =>
+                  combined.includes(indicator)
+                );
+
+                if (hasPaymentIndicator) {
+                  console.log(`   ⏭️ Skipping #${issue.number} - payment indicator detected (likely already paid)`);
+                  continue;
+                }
+
+                // FILTER 4: Check comments for payment confirmation
+                if (issue.comments > 0) {
+                  try {
+                    const { data: comments } = await github.rest.issues.listComments({
+                      owner,
+                      repo: repoName,
+                      issue_number: issue.number,
+                      per_page: 100
+                    });
+
+                    const hasGitcoinPayment = comments.some(comment => {
+                      const commentBody = (comment.body || '').toLowerCase();
+                      return (
+                        (comment.user.login === 'gitcoinbot' && commentBody.includes('approved & issued')) ||
+                        commentBody.includes('the funding of') && commentBody.includes('has been approved & issued')
+                      );
+                    });
+
+                    if (hasGitcoinPayment) {
+                      console.log(`   ⏭️ Skipping #${issue.number} - Gitcoin payment confirmed in comments`);
+                      continue;
+                    }
+                  } catch (error) {
+                    console.log(`   ⚠️ Could not fetch comments for #${issue.number}: ${error.message}`);
+                  }
+                }
 
                 // Extract amount
                 const patterns = [
