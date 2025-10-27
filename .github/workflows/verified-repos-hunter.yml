@@ -111,16 +111,16 @@ jobs:
                 }
 
                 // FILTER 1: Skip bounties older than 2 years (created before 2023)
-                const createdDate = new Date(issue.created_at);
-                if (createdDate < twoYearsAgo) {
-                  console.log(`   ⏭️ Skipping #${issue.number} - too old (created ${createdDate.getFullYear()})`);
+                const issueCreatedDate = new Date(issue.created_at);
+                if (issueCreatedDate < twoYearsAgo) {
+                  console.log(`   ⏭️ Skipping #${issue.number} - too old (created ${issueCreatedDate.getFullYear()})`);
                   continue;
                 }
 
                 // FILTER 2: Skip bounties with no recent activity (6 months)
-                const updatedDate = new Date(issue.updated_at);
-                if (updatedDate < sixMonthsAgo) {
-                  console.log(`   ⏭️ Skipping #${issue.number} - no activity in 6+ months (last update ${updatedDate.toLocaleDateString()})`);
+                const issueUpdatedDate = new Date(issue.updated_at);
+                if (issueUpdatedDate < sixMonthsAgo) {
+                  console.log(`   ⏭️ Skipping #${issue.number} - no activity in 6+ months (last update ${issueUpdatedDate.toLocaleDateString()})`);
                   continue;
                 }
 
