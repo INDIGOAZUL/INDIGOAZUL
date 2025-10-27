@@ -44,6 +44,23 @@ jobs:
             { repo: 'Uniswap/v2-core', priority: 'MEDIUM' },
             { repo: 'aave/aave-v3-core', priority: 'HIGH' },
             { repo: 'compound-finance/compound-protocol', priority: 'HIGH' },
+            { repo: 'yearn/yearn-vaults', priority: 'HIGH' },
+            { repo: 'curvefi/curve-contract', priority: 'HIGH' },
+            { repo: 'synthetixio/synthetix', priority: 'HIGH' },
+            { repo: 'makerdao/dss', priority: 'HIGH' },
+
+            // Layer 2 & Scaling solutions
+            { repo: 'OffchainLabs/arbitrum', priority: 'HIGH' },
+            { repo: 'ethereum-optimism/optimism', priority: 'HIGH' },
+            { repo: 'matter-labs/zksync', priority: 'HIGH' },
+
+            // NFT & Gaming
+            { repo: 'OpenSea/seaport', priority: 'MEDIUM' },
+            { repo: 'decentraland/marketplace-contracts', priority: 'MEDIUM' },
+
+            // Infrastructure
+            { repo: 'ChainSafe/lodestar', priority: 'MEDIUM' },
+            { repo: 'prysmaticlabs/prysm', priority: 'MEDIUM' },
 
             // Major open source projects
             { repo: 'nodejs/node', priority: 'MEDIUM' },
