@@ -1,6 +1,6 @@
 {
-  "generated_at": "2025-10-27T01:56:22.965Z",
-  "total_found": 4,
+  "generated_at": "2025-10-27T02:28:35.286Z",
+  "total_found": 0,
   "verified_only": true,
   "repos_searched": [
     "Expensify/App",
@@ -29,78 +29,5 @@
     "facebook/react",
     "vercel/next.js"
   ],
-  "bounties": [
-    {
-      "title": "Triggered Order Contract",
-      "url": "https://github.com/Synthetixio/synthetix/issues/195",
-      "repo": "synthetixio/synthetix",
-      "repo_priority": "HIGH",
-      "amount": 10000,
-      "labels": [
-        "Bounty"
-      ],
-      "created": "2019-08-15T02:25:13Z",
-      "comments": 0,
-      "assignees": 0,
-      "score": 20,
-      "body_preview": "### Triggered Orders Contract\r\n\r\nSynthetix.exchange has many advantages over order book DEX's, a wider range of assets and with much deeper liquidity, but it is missing a critical feature in triggered orders. sX does not currently support any order type other than real-time market orders. We want to",
-      "verified_repo": true,
-      "trust_level": "HIGH"
-    },
-    {
-      "title": "Add linting to CI for Vyper files",
-      "url": "https://github.com/yearn/yearn-vaults/issues/16",
-      "repo": "yearn/yearn-vaults",
-      "repo_priority": "HIGH",
-      "amount": "Unknown",
-      "labels": [
-        "enhancement",
-        "good first issue",
-        "help wanted",
-        "p3",
-        "bounty"
-      ],
-      "created": "2020-10-14T17:34:02Z",
-      "comments": 16,
-      "assignees": 0,
-      "score": 18,
-      "body_preview": "Currently have linting for Python and Solidity files, but not Vyper.\r\n\r\nAdd linting support + hook up to Github workflows.",
-      "verified_repo": true,
-      "trust_level": "HIGH"
-    },
-    {
-      "title": "Add Synth Exchanges to Uniswap",
-      "url": "https://github.com/Synthetixio/synthetix/issues/213",
-      "repo": "synthetixio/synthetix",
-      "repo_priority": "HIGH",
-      "amount": "Unknown",
-      "labels": [
-        "Bounty"
-      ],
-      "created": "2019-08-29T06:39:42Z",
-      "comments": 22,
-      "assignees": 0,
-      "score": 14,
-      "body_preview": "Synthetix has launched a number of unique assets over the last six months, but the learning curve on synthetix.exchange is still fairly high. In order to make the full range of Synths more accessible we want to launch a fork of the Uniswap UI to enable any Synth to be purchased directly from the Uni",
-      "verified_repo": true,
-      "trust_level": "HIGH"
-    },
-    {
-      "title": "SNX Staking Pool ",
-      "url": "https://github.com/Synthetixio/synthetix/issues/192",
-      "repo": "synthetixio/synthetix",
-      "repo_priority": "HIGH",
-      "amount": "Unknown",
-      "labels": [
-        "Bounty"
-      ],
-      "created": "2019-08-12T02:42:27Z",
-      "comments": 22,
-      "assignees": 0,
-      "score": 14,
-      "body_preview": "Staking SNX is a fairly complicated process with numerous strategies to optimise yield and reduce risk. There are a number of community members who have put significant effort into optimising these strategies, particularly Nocturnalsheet. The effort and skill required to optimally stake SNX presents",
-      "verified_repo": true,
-      "trust_level": "HIGH"
-    }
-  ]
+  "bounties": []
 }
