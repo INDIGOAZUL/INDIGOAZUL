@@ -1,11 +1,6 @@
 name: 🤖 Auto-Claim Assistant
 
 on:
-  # Prevent accidental push triggers (workflow is manual-only)
-  push:
-    paths:
-      - '.github/workflows/.never-trigger-on-push/**'
-
   workflow_dispatch:
     inputs:
       bounty_url:
