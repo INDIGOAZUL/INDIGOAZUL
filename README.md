@@ -1,107 +1,36 @@
-  # 👋 Hi, I'm Narjell Ebanks (@INDIGOAZUL)
+# Narjell Ebanks
 
-  **Full-Stack Developer | Open Source Creator | Web3 Builder**
+**Founder & Full-Stack Engineer building [La Tanda](https://latanda.online)** — a Web3 fintech ecosystem for Latin America: a Cosmos SDK sovereign chain, ROSCAs/tandas digitization, 15K+ users, mainnet Q1 2027.
 
-  📍 Roatan, Bay Islands, Honduras 🇭🇳
+📍 Roatan, Honduras 🇭🇳
 
-  ---
+---
 
-  ## 🚀 What I'm Building
+## 🌎 La Tanda — Web3 fintech for Latin America
 
-  ### [@perks/auth-middleware](https://www.npmjs.com/package/@perks/auth-middleware)
-  Production-ready JWT authentication for Node.js • Battle-tested with 30+ users • 100% test
-  coverage
+La Tanda digitizes the *tanda* (ROSCA — the rotating savings groups billions already trust informally) and anchors it to a sovereign blockchain: on-chain reputation, 0%-commission savings groups, a marketplace, and LTD mining — seven integrated layers, not a single app.
 
-  [![npm version](https://img.shields.io/npm/v/@perks/auth-middleware)](https://www.npmjs.com/packag
-  e/@perks/auth-middleware)
-  [![npm downloads](https://img.shields.io/npm/dm/@perks/auth-middleware)](https://www.npmjs.com/pac
-  kage/@perks/auth-middleware)
-  [![GitHub stars](https://img.shields.io/github/stars/INDIGOAZUL/latanda-auth-middleware)](https://
-  github.com/INDIGOAZUL/latanda-auth-middleware)
+**Public repositories:**
 
-  ### [La Tanda Platform](https://latanda.online) 🌐
-  Web3 rotating savings platform (tanda/ROSCA) serving real users with financial transactions. Built
-   with Node.js, PostgreSQL, blockchain integration.
+- [**la-tanda-web**](https://github.com/INDIGOAZUL/la-tanda-web) — Public frontend mirror of the 7-layer ecosystem
+- [**latanda-auth-middleware**](https://github.com/INDIGOAZUL/latanda-auth-middleware) — Production JWT authentication middleware, published as [`@latanda/auth-middleware`](https://www.npmjs.com/package/@latanda/auth-middleware)
+- [**la-tanda-chain**](https://github.com/INDIGOAZUL/la-tanda-chain) — Sovereign Cosmos SDK + CometBFT blockchain (`latanda-testnet-1`, live)
 
-  ---
+---
 
-  ## 💼 Tech Stack
+## 🛠️ Tech Stack
 
-  **Backend:** Node.js, Express, PostgreSQL, JWT, bcrypt
-  **Frontend:** HTML5, CSS3 (Glassmorphism), Vanilla JavaScript
-  **Web3:** Smart Contracts, Wallet Integration, DeFi
-  **DevOps:** Nginx, Linux, Git
-  **Currently Learning:** TypeScript, Solidity, Advanced DeFi patterns
+**Backend:** Node.js · Express · PostgreSQL
+**Chain:** Cosmos SDK · CometBFT
+**Frontend:** Vanilla JavaScript · HTML5 · CSS3
+**Infra:** nginx · Linux
 
-  ---
+---
 
-  ## 🌱 Current Focus
+## 📫 Contact
 
-  - 🔧 Maintaining `@perks/auth-middleware` and planning v1.1.0 features
-  - 🌐 Scaling La Tanda platform with new DeFi integrations
-  - 📚 Building open-source tools for the Node.js community
-  - 💡 Exploring Web3 solutions for financial inclusion in Central America
-
-  ---
-
-  ## 💰 Support My Work
-
-  Building open-source tools and sharing production code from real-world projects:
-
-  [![Ko-fi](https://img.shields.io/badge/Ko--fi-Buy%20me%20a%20coffee-ff5e5b?logo=ko-fi&logoColor=wh
-  ite)](https://ko-fi.com/ebanks)
-  [![PayPal](https://img.shields.io/badge/PayPal-Donate-00457C?logo=paypal&logoColor=white)](https:/
-  /paypal.me/narjell)
-  [![Open Collective](https://img.shields.io/badge/Open%20Collective-Support-7fadf2?logo=opencollect
-  ive&logoColor=white)](https://opencollective.com/latanda-auth-middleware)
-
-  ---
-
-  ## 💞️ Let's Collaborate
-
-  I'm interested in:
-  - 🔐 Authentication & security for Node.js applications
-  - 🌐 Web3 & DeFi projects focused on financial inclusion
-  - 💼 Fintech solutions for underbanked communities
-  - 📦 Open-source packages that solve real production problems
-  - 🇭🇳 Projects empowering Central American developers
-
-  ---
-
-  ## 📫 Get In Touch
-
-  - 💼 **Consulting:** Implementation help, custom features, enterprise support
-  - 📧 **Email:** ebanksnigel@gmail.com
-  - 🌐 **Blog:** [Millionair Academy](https://millionair-academy.blogspot.com/)
-  - 📦 **npm:** [@perks](https://www.npmjs.com/~perks)
-
-  ---
-
-  ## 📊 GitHub Stats
-
-  ![INDIGOAZUL's GitHub stats](https://github-readme-stats.vercel.app/api?username=INDIGOAZUL&show_i
-  cons=true&theme=radical)
-
-  ---
-
-  ## 📚 Recommended Reading
-
-  📖 **Tech:** "Clean Code" by Robert C. Martin, "Designing Data-Intensive Applications" by Martin
-  Kleppmann
-  💰 **Finance:** "Rich Dad Poor Dad" by Robert Kiyosaki, "The Intelligent Investor" by Benjamin
-  Graham
-  🚀 **Growth:** "Atomic Habits" by James Clear, "The Lean Startup" by Eric Ries
-
-  ---
-
-  ## ⚡ Fun Facts
-
-  - 🏝️ Building fintech from a Caribbean island
-  - 🌍 Passionate about financial inclusion through technology
-  - 📦 Published npm author with production battle-tested code
-  - 🎯 Three pillars: Self-Empowerment, Financial Growth, Community Development
-  - 🔧 Believer in open-source and knowledge sharing
-
-  ---
-
-  **"Building tools that empower people financially, one line of code at a time."** 🚀
+- 📧 **Email:** [founder@latanda.online](mailto:founder@latanda.online)
+- 💼 **LinkedIn:** [linkedin.com/in/e-banks360](https://linkedin.com/in/e-banks360)
+- 🐦 **X:** [@MrtEbanks](https://x.com/MrtEbanks)
+- 💬 **Telegram:** [t.me/EbanksSite](https://t.me/EbanksSite)
+- ✍️ **Blog:** [ebankstudy.blogspot.com](https://ebankstudy.blogspot.com)
