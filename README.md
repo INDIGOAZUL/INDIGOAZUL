@@ -1,6 +1,6 @@
 # Narjell Ebanks
 
-**Founder & Full-Stack Engineer building [La Tanda](https://latanda.online)** — a Web3 fintech ecosystem for Latin America: a Cosmos SDK sovereign chain, ROSCAs/tandas digitization, 15K+ users, mainnet Q1 2027.
+**Founder & Full-Stack Engineer building [La Tanda](https://latanda.online)** — a Web3 fintech ecosystem for Latin America: a Cosmos SDK sovereign chain, ROSCAs/tandas digitization, users, mainnet Q1 2027.
 
 📍 Roatan, Honduras 🇭🇳
 
